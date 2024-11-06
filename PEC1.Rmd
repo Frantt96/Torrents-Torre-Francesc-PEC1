@@ -1,0 +1,171 @@
+---
+title: "PEC1_Analisis_Omicos"
+author: "Francesc Torrents Torre"
+date: "2024-11-06"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(SummarizedExperiment)
+library(magrittr)
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+install.packages("devtools")
+library(POMA)
+library(pheatmap)
+```
+
+
+
+# Primera prueba de evaluación contínua (PEC1)
+
+## Presentación y objetivos
+
+Esta PEC completa la introducción a las ómicas meidante un ejercicio de repaso y ampliación que nos permite trabajar con algunas de las herramientas de este curso, en concreto, Bioconductor y la exploración multivariante de datos
+
+Github: https://github.com/Frantt96/Torrents-Torre-Francesc-PEC1.git
+
+## Descripción de la PEC
+
+El objetivo de esta PEC es que planifiquéis y ejecutéis una versión simplificada del proceso de análisis de datos ómicos, a la vez que practicáis con algunas de las herramientas y métodos que hemos trabajado
+
+
+## Materiales y Métodos
+
+Para la realización de esta PEC es necesario la utilización de un dataset de metabolómica que obtendremos del siguiente repositorio de github: https://github.com/nutrimetabolomics/metaboData/
+
+En mi caso, se ha escogido el dataset human_cachexia. Este viene en un solo documento .csv del cual tendremos que obtener los metadatos para poder realizar la clase SummarizedExperiment. 
+Los datos proporcionados sobre este dataset son los siguientes:
+
+- "Samples are not paired"
+- "2 groups were detected in samples"
+- "All data values are numeric"
+- "A total of 0 (0%) missing values were detected"
+
+Este está compuesto por una tabla de concentraciones de metabolitos provenientes de dos grupos de muestra de orina humana. 
+
+
+## Resultados
+
+
+Para la utilización de este Dataset es necesario descargado, ya sea copiando directamente el repositorio de Github o descargando el documento .csv (que ha sido el método utilizado).
+
+Una vez descargado lo cargamos a RStudio con el siguiente codigo. 
+
+```{r}
+data <- read.csv("human_cachexia.csv", header = TRUE, stringsAsFactors = FALSE)  
+
+```
+
+Este cargará los datos de human_cachexia desde el directorio actual. Se indica que la priemra fila del archivo contiene los nombres de las columnas y no datos.
+Tambíen nos aseguramos de que las colummnas de texto se lean como cadenas de carácteres y no como factores para evitar de esta manera problemas posteriores. 
+
+
+Utilizaremos head(data) y str(data) para poder visualizar el tipo de datos que tenemos en el DataFrame y confirmar que la importanción es correcta. También observamos que las variables estan bien generadas.
+```{r}
+head(data)
+str(data)
+```
+
+Ahora, separamos los datos en una matriz de expresión (los metabolits) y en metadatos (el ID del paciente y la pérdida de músculo) y nos aseguramos que las filas tengan los mismos nombres.
+
+```{r}
+expression_data <- as.matrix(data[, 3:ncol(data)])
+rownames(expression_data) <- data$Patient.ID
+```
+
+Seleccionamos desde la tercera columna hasta la última (metabolitos) del dataframe. Las dos primeras columnas son las que contiene el IDpaciente y pérdida de músculo.
+
+Ahora creamos los metadatos para las filas y columnas. Las filas contendran la información del paciente (IDpaciente y la pérdida de masa muscular) y las columnas contendran los nombres de los metabolitos
+
+```{r}
+row_metadata <- data.frame(Patient_ID = data$Patient.ID, Muscle_loss = data$Muscle.loss)
+col_metadata <- data.frame(Metabolite = colnames(expression_data))
+```
+
+Una vez preparado todos los datos, creamos el objeto SummarizedExperiment
+
+```{r}
+se <- SummarizedExperiment(assays = list(counts = expression_data),
+                                  rowData = row_metadata,
+                                  colData = col_metadata)
+                                  
+se
+```
+
+
+Los resultados indican lo siguiente: 
+
+- Class: SummarizedExperiment
+- Dim: contiene 77 filas y 63 columnas
+- Metadata(0): No contiene metadatos adicionales para el objeto.
+- Assays(1): counts. Existe un conjunto de datos que contiene los valores de expresión de los metabolitos, almacenados en expression_data.
+- RowNames: Son los nombres de las filas correspondientes a los identificadores de los pacientes.
+- RowData names: Son los metadatos asociados a las filas.
+- Colnames: Representan los metabolitos. Son los nombres de las columnas.
+- colData names: Describre las columnas.
+
+
+Una vez tenemos el SummarizedExperiment lo normalizamos para que los resultados del análisis estadístico sea más representativo. Utilizaremos el paquete POMA, que ofrece un conjunto de herramientas integral diseñado para el análisis de datos ómicos. Este paquete aprovechará la clase estandarizada SummarizedExperiment de Bioconductor, garantizando la integración y compatibilidad con las herramientas de este. 
+
+El método de normalización "log_pareto" es específico para el análisis de datos de metabolómica. Se puede utilizar cuando los datos tienen características de distribución sesgada y escalas muy variadas, lo que es bastante común en datos de metabolitos. 
+
+```{r}
+normalized <- se %>% 
+  PomaNorm(method = "log_pareto")
+```
+
+Podemos representar diferentes gráficos para observar los datos una vez normalizados. 
+
+
+Este gráfico nos muestra boxplots para cada metabolito en el conjunto de datos normalizados. Resulta útil para observar la distribución de los valores de cada metabolito.
+
+```{r, fig.width=17, fig.height=10, dpi=100} 
+PomaBoxplots(normalized)
+```
+
+Este gráfico de densidad muestra la distribución de los valores normalizados de los metabolitos en el conjunto de datos. Permite observar cómo estan distribuidos de forma continua y verificar la homogeneidad en las distribuciones
+
+```{r, fig.width=15, fig.height=7, dpi=100} 
+PomaDensity(normalized)
+```
+
+
+Un gráfico heatmap es útil para poder visualizar la expresión de metabolitos a traves de muestras para observar patrones de agrupamiento entre las muestras y las características (en este caso metabolitos).
+
+Los colores identifican los niveles de expresión. En este caso, colores más cálidos (mas saturados) indican un nivel alto de expresión mientras que colores mas frios (menos saturado) indican niveles bajos de expresión. 
+
+Los dendrogramas ayudan a la visualización de agrupaciones jerárquicas de muestras o metabolitos. Cuanto mas cerca estan dos muestras en el dendrograma, mas similares son en términos de sus perfiles de expresion de metabolitos. 
+
+
+
+```{r, fig.width=15, fig.height=7, dpi=100}
+pheatmap(assay(normalized), scale = "row", clustering_distance_rows = "euclidean",
+clustering_distance_cols = "euclidean", main = "Heatmap de Expresión")
+```
+
+En el gráfico boxplot, cada caja representa la distribución de valores de cada metabolito para todas las muestras. En el eje de las Y se muestra los valores de expresión de los metabolitos despues de la normalización (rango de -2 a 2)
+
+Este gráfico nos proporciona una visión general de la distribución de cada metabolito. Los que la caja esté centrada alrededor de 0 están cerca del valor promedio de la mayoria de las muestras. En cambio, las que estan descentradas tienen un sesgo en su abundancia. 
+
+Metabolitos con muchos outliers sugieren variabilidad en las muestras y que estas son muy diferentes con el resto. 
+
+```{r}
+boxplot(assay(normalized), main = "Boxplot de los Metabolitos", las = 2, cex.axis = 0.7)
+```
+
+El heatmap de la Matriz de Correlación de Metabolitos representa la magnitud y la dirección de la correlación entre los metabolitos a partir de los colores. 
+De manera general, los colores oscuros (tonos mas rojizos) indican correlaciones fuertes y los colores claros (tonos mas suaves) indican correlaciones débiles o cercanas a 0. 
+
+Las correlaciones fuertes sugieren que los metabolitos tienden a cambiar de manera simiar en todas las muestras. Este hecho da a entender que podria existir una relación biológica o funcional. 
+
+Las correlaciones débiles sugieren que los metabolitos no estan relacionados entre si y no presentan variación conjunta significativa en las muestras que se han analizado.
+
+Los bloques de color a lo largo de la diagonal representan grupos de metabolitos que están altamente correlacionados. 
+
+```{r}
+cor_matrix <- cor(assay(normalized))
+heatmap(cor_matrix, main = "Matriz de Correlación de Metabolitos")
+```
